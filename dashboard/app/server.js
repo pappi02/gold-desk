@@ -177,6 +177,7 @@ async function checkAlerts() {
         `${open ? (open.type === 0 ? "BUY" : "SELL") : ""} ${x.volume} lot ${x.symbol}: ${open ? open.price : "?"} → ${x.price}`,
         `Result: ${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}${r != null ? `  (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)` : ""}`,
         `Exit: ${REASON[x.reason] || x.reason}${hold != null ? `   Held: ${hold < 24 ? hold.toFixed(1) + " h" : (hold / 24).toFixed(1) + " days"}` : ""}`,
+        ...(!stillOpen && pnl <= 0 ? peakLine(j, x.position_id, open, off) : []),
         `Balance now: $${bal.toFixed(2)}`,
         `Time: ${fmtEat(x.time, off)}`,
       ], "trade");
@@ -205,6 +206,18 @@ async function checkAlerts() {
     } else if (step < state.ddStep && dd < DD_ALERT_PCT) state.ddStep = 0;
   }
   saveState();
+}
+
+// farthest point a losing trade reached in its favour before it closed
+function peakLine(j, pid, open, off) {
+  const ex = (j.excursions || []).find((e) => e.position_id === pid);
+  if (!ex || !open) return [];
+  const dir = open.type === 0 ? 1 : -1, contract = j.market?.contract_size || 100;
+  const usd = (ex.best - open.price) * dir * open.volume * contract, risk = tag(open.comment, "R");
+  const r = risk ? ` (${usd >= 0 ? "+" : ""}${(usd / risk).toFixed(2)}R)` : "";
+  return [usd > 0
+    ? `Farthest in favour: ${ex.best} at ${fmtEat(ex.best_time, off)}, +$${usd.toFixed(2)}${r}`
+    : "Farthest in favour: never went into profit"];
 }
 
 // ---------------------------------------------------------------- http

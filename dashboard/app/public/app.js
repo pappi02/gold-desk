@@ -58,6 +58,7 @@
     const stratByMagic = new Map(CFG.strategies.map((s) => [s.magic, s]));
     const contract = d.market?.contract_size || 100;
     const posById = new Map((d.positions || []).map((p) => [p.position_id, p]));
+    const excById = new Map((d.excursions || []).map((x) => [x.position_id, x]));
     const groups = new Map();
     for (const x of d.deals || []) {
       if (x.type > 1) continue;
@@ -79,12 +80,17 @@
       const exitVol = exits.reduce((a, x) => a + x.volume, 0);
       const exitPx = exitVol ? exits.reduce((a, x) => a + x.price * x.volume, 0) / exitVol : null;
       const lastExit = exits[exits.length - 1];
+      // farthest point reached in favour / against, in price, $ (at entry size) and R
+      const ex = excById.get(pid);
+      const xv = (px) => px == null ? null : { px, usd: (px - e.price) * dir * e.volume * contract, R: risk ? (px - e.price) * dir * e.volume * contract / risk : null };
+      const best = ex ? { ...xv(ex.best), ms: toMs(ex.best_time) } : null, worst = ex ? { ...xv(ex.worst), ms: toMs(ex.worst_time) } : null;
       trades.push({
         id: pid, magic: e.magic, strat: s ? s.id : "manual", sname: s ? s.name : e.magic ? `Magic ${e.magic}` : "Manual",
         color: s ? s.color : "#747067", dir, side: dir === 1 ? "BUY" : "SELL", volume: e.volume, symbol: e.symbol,
         openMs: toMs(e.time), openPrice: e.price, initSL: e.sl || null, tp: (pos ? pos.tp : e.tp) || null, comment: e.comment, risk,
         trigger: /(?:^|\s)AS(?:\s|$)/.test(e.comment) ? "AS" : /(?:^|\s)PD(?:\s|$)/.test(e.comment) ? "PD" : null,
         open: !!pos, pos, pnl, R: risk ? pnl / risk : null,
+        best, worst, exExact: ex ? ex.exact : null,
         closeMs: !pos && lastExit ? toMs(lastExit.time) : null, closePrice: !pos ? exitPx : null, reason: !pos && lastExit ? lastExit.reason : null,
       });
     }
@@ -437,6 +443,13 @@
     const f = ui.trades, k = { open: (t) => t.openMs, close: (t) => t.closeMs || Infinity, pnl: (t) => t.pnl, r: (t) => t.R ?? -Infinity, strat: (t) => t.sname, lots: (t) => t.volume }[f.sort] || ((t) => t.openMs);
     return [...list].sort((a, b) => { const x = k(a), y = k(b); return (x < y ? -1 : x > y ? 1 : 0) * (f.desc ? -1 : 1); });
   }
+  // farthest point in favour: shown for losing (or breakeven) closed trades, and live for open ones
+  const peakShown = (t) => t.best && (t.open || t.pnl <= 0);
+  const peakCell = (t) => {
+    if (!peakShown(t)) return `<span class="muted">—</span>`;
+    const b = t.best, r = b.R != null ? rr(b.R) : money(b.usd, true);
+    return `<span title="Farthest in favour${t.open ? " so far" : ""}: ${num(b.px, 2)} at ${fmtTime(b.ms)} (${money(b.usd, true)})">${num(b.px, 2)} <span class="${b.usd > 0 ? "up" : "muted"}">${r}</span></span>`;
+  };
   const tradeCols = () => [
     { h: "Opened", sort: "open", hide: "sm", f: (t) => `<span class="m t2">${fmtTime(t.openMs)}</span>` },
     { h: "Strategy", sort: "strat", cls: "strat", f: (t) => stratCellH(t) },
@@ -448,17 +461,20 @@
     { h: "Exit reason", hide: "md", f: (t) => t.open ? `<span class="muted">—</span>` : esc(REASON[t.reason] ?? t.reason) },
     { h: "P/L", sort: "pnl", n: 1, f: (t) => `<span class="${ud(t.pnl)}">${money(t.pnl, true)}</span>` },
     { h: "R", sort: "r", n: 1, f: (t) => `<span class="${ud(t.R)}">${rr(t.R)}</span>` },
+    { h: "Peak", n: 1, hide: "sm", f: peakCell },
   ];
   function tradeDetail(t) {
     const held = ((t.closeMs || Date.now()) - t.openMs) / 1000;
     const kv = [["Opened", fmtTime(t.openMs)], ["Entry", num(t.openPrice, 2)], ["Lots", num(t.volume, 2)], ["Closed", t.open ? "open" : fmtTime(t.closeMs)], ["Exit", t.open ? "—" : num(t.closePrice, 2)], ["Exit reason", t.open ? "—" : esc(REASON[t.reason] ?? t.reason)],
       ["Position", `#${t.id}`], ["Magic", t.magic], ["Initial stop", t.initSL ? num(t.initSL, 2) : "—"], ["Stop distance", t.initSL ? num(Math.abs(t.openPrice - t.initSL), 2) : "—"],
       ["Risk at entry", money(t.risk)], ["Target", t.tp ? num(t.tp, 2) : "none"], ["Held", dur(held)], ["Trigger", t.trigger === "AS" ? "Asian-range break" : t.trigger === "PD" ? "Prev-day break" : "—"], ["EA comment", esc(t.comment)]];
-    return `<tr class="det"><td colspan="10"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 24px">${kv.map(([k, v]) => `<div><div class="muted" style="font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase">${k}</div><div class="m">${v}</div></div>`).join("")}</div></td></tr>`;
+    const exc = (x) => x ? `${num(x.px, 2)} · <span class="${ud(x.usd)}">${x.R != null ? rr(x.R) : money(x.usd, true)}</span> · ${money(x.usd, true)}<div class="muted">${fmtTime(x.ms)}</div>` : "—";
+    kv.splice(6, 0, [`Farthest in favour${t.open ? " so far" : ""}`, exc(t.best)], [`Farthest against${t.open ? " so far" : ""}`, exc(t.worst)]);
+    return `<tr class="det"><td colspan="11"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 24px">${kv.map(([k, v]) => `<div><div class="muted" style="font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase">${k}</div><div class="m">${v}</div></div>`).join("")}</div></td></tr>`;
   }
   function exportCsv(list) {
-    const head = ["position", "strategy", "magic", "side", "lots", "opened_eat", "entry", "initial_sl", "closed_eat", "exit", "exit_reason", "pnl", "risk", "R", "trigger", "status"];
-    const rows = list.map((t) => [t.id, t.sname, t.magic, t.side, t.volume, fmtTime(t.openMs), t.openPrice, t.initSL ?? "", t.closeMs ? fmtTime(t.closeMs) : "", t.closePrice ?? "", t.open ? "" : REASON[t.reason] ?? t.reason, t.pnl.toFixed(2), t.risk?.toFixed(2) ?? "", t.R?.toFixed(3) ?? "", t.trigger ?? "", t.open ? "open" : "closed"]);
+    const head = ["position", "strategy", "magic", "side", "lots", "opened_eat", "entry", "initial_sl", "closed_eat", "exit", "exit_reason", "pnl", "risk", "R", "best_price", "best_R", "worst_price", "worst_R", "trigger", "status"];
+    const rows = list.map((t) => [t.id, t.sname, t.magic, t.side, t.volume, fmtTime(t.openMs), t.openPrice, t.initSL ?? "", t.closeMs ? fmtTime(t.closeMs) : "", t.closePrice ?? "", t.open ? "" : REASON[t.reason] ?? t.reason, t.pnl.toFixed(2), t.risk?.toFixed(2) ?? "", t.R?.toFixed(3) ?? "", t.best?.px ?? "", t.best?.R?.toFixed(3) ?? "", t.worst?.px ?? "", t.worst?.R?.toFixed(3) ?? "", t.trigger ?? "", t.open ? "open" : "closed"]);
     const csv = [head, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));

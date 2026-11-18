@@ -7,7 +7,7 @@
 //+------------------------------------------------------------------+
 #property service
 #property copyright "Gold Desk"
-#property version   "1.00"
+#property version   "1.10"
 
 input string InpSymbol     = "XAUUSD";                  // Symbol to describe
 input int    InpIntervalMs = 2000;                      // Export interval (ms)
@@ -39,6 +39,54 @@ int Trend(const double c, const double e20, const double e50)
    if(c == EMPTY_VALUE || e20 == EMPTY_VALUE || e50 == EMPTY_VALUE || c == 0) return 0;
    return (c > e50 && e20 > e50) ? 1 : (c < e50 && e20 < e50) ? -1 : 0;
 }
+
+//--- per-position excursion: farthest price reached in favour (best) and against (worst)
+//    between entry and exit. Edge minutes use ticks, the middle uses M1 bars (bid prices).
+struct PosInfo { long id; int dir; long inMsc; long outMsc; bool hasOut; };
+long   gExcId[];    // cache for closed positions (their excursion never changes)
+string gExcJs[];
+
+void Take(const int dir, const double hi, const double lo, const long t, double &best, long &bestT, double &worst, long &worstT)
+{
+   double fav = dir > 0 ? hi : lo, adv = dir > 0 ? lo : hi;
+   if((fav - best) * dir > 0) { best = fav; bestT = t; }
+   if((adv - worst) * dir < 0) { worst = adv; worstT = t; }
+}
+// returns false if tick history was not ready (result is then approximate and not cached)
+bool TickSpan(const string sym, const int dir, const long fromMsc, const long toMsc, double &best, long &bestT, double &worst, long &worstT)
+{
+   if(toMsc < fromMsc) return true;
+   MqlTick tk[];
+   int n = CopyTicksRange(sym, tk, COPY_TICKS_INFO, (ulong)fromMsc, (ulong)toMsc);
+   if(n > 0)
+   {
+      for(int i = 0; i < n; i++) if(tk[i].bid > 0) Take(dir, tk[i].bid, tk[i].bid, (long)(tk[i].time_msc / 1000), best, bestT, worst, worstT);
+      return true;
+   }
+   MqlRates r[];                                         // fall back to the minute bar(s)
+   if(CopyRates(sym, PERIOD_M1, (datetime)(fromMsc / 1000), (datetime)(toMsc / 1000), r) > 0)
+      for(int i = 0; i < ArraySize(r); i++) Take(dir, r[i].high, r[i].low, (long)r[i].time, best, bestT, worst, worstT);
+   return n == 0;
+}
+bool Excursion(const string sym, const int dir, const long inMsc, const long outMsc, double &best, long &bestT, double &worst, long &worstT)
+{
+   best = dir > 0 ? -DBL_MAX : DBL_MAX; worst = -best; bestT = 0; worstT = 0;
+   long f = inMsc / 1000, t = outMsc / 1000;
+   long fEnd = f - f % 60 + 60, tStart = t - t % 60;      // end of entry minute, start of exit minute
+   if(tStart <= fEnd) return TickSpan(sym, dir, inMsc, outMsc, best, bestT, worst, worstT);
+   bool ok = TickSpan(sym, dir, inMsc, fEnd * 1000 - 1, best, bestT, worst, worstT);
+   if(tStart - 60 >= fEnd)
+   {
+      MqlRates r[];
+      int n = CopyRates(sym, PERIOD_M1, (datetime)fEnd, (datetime)(tStart - 60), r);
+      if(n <= 0) { n = CopyRates(sym, PERIOD_M15, (datetime)fEnd, (datetime)(tStart - 60), r); ok = false; }
+      for(int i = 0; i < n; i++) Take(dir, r[i].high, r[i].low, (long)r[i].time, best, bestT, worst, worstT);
+   }
+   ok = TickSpan(sym, dir, tStart * 1000, outMsc, best, bestT, worst, worstT) && ok;
+   return ok;
+}
+int FindPos(PosInfo &p[], const long id) { for(int i = 0; i < ArraySize(p); i++) if(p[i].id == id) return i; return -1; }
+int FindCache(const long id) { for(int i = 0; i < ArraySize(gExcId); i++) if(gExcId[i] == id) return i; return -1; }
 
 void OnStart()
 {
@@ -133,6 +181,7 @@ void OnStart()
       //--- deal history (everything on the account)
       js += "\"deals\":[";
       int nd = 0, capUsed = 0;
+      PosInfo P[];
       datetime d0 = iTime(sym, PERIOD_D1, 0);
       if(HistorySelect(0, TimeCurrent() + 86400))
          for(int i = 0; i < HistoryDealsTotal(); i++)
@@ -140,6 +189,15 @@ void OnStart()
             ulong dl = HistoryDealGetTicket(i); if(dl == 0) continue;
             long entry = HistoryDealGetInteger(dl, DEAL_ENTRY), mg = HistoryDealGetInteger(dl, DEAL_MAGIC);
             datetime dt = (datetime)HistoryDealGetInteger(dl, DEAL_TIME);
+            long dtype = HistoryDealGetInteger(dl, DEAL_TYPE), pid = HistoryDealGetInteger(dl, DEAL_POSITION_ID);
+            if((dtype == DEAL_TYPE_BUY || dtype == DEAL_TYPE_SELL) && HistoryDealGetString(dl, DEAL_SYMBOL) == sym)
+            {
+               int k = FindPos(P, pid);
+               if(k < 0) { k = ArraySize(P); ArrayResize(P, k + 1); P[k].id = pid; P[k].dir = 0; P[k].inMsc = 0; P[k].outMsc = 0; P[k].hasOut = false; }
+               long msc = HistoryDealGetInteger(dl, DEAL_TIME_MSC);
+               if(entry == DEAL_ENTRY_IN) { P[k].inMsc = msc; P[k].dir = dtype == DEAL_TYPE_BUY ? 1 : -1; }
+               else if(msc > P[k].outMsc) { P[k].outMsc = msc; P[k].hasOut = true; }
+            }
             if(entry == DEAL_ENTRY_IN && dt >= d0 && HistoryDealGetString(dl, DEAL_SYMBOL) == sym)
                for(int j = 0; j < nCap; j++) if(StringToInteger(capMagics[j]) == mg) { capUsed++; break; }
             js += (nd++ > 0 ? "," : "") + "{\"ticket\":" + I((long)dl)
@@ -158,6 +216,31 @@ void OnStart()
                 + ",\"fee\":" + N(HistoryDealGetDouble(dl, DEAL_FEE), 2)
                 + ",\"comment\":" + Q(HistoryDealGetString(dl, DEAL_COMMENT)) + "}";
          }
+      js += "],";
+
+      //--- excursions (open positions: so far; closed: cached once computed from full tick data)
+      js += "\"excursions\":[";
+      int ne = 0;
+      long nowMsc = (long)TimeTradeServer() * 1000;
+      if(hasTick && tk.time_msc > 0) nowMsc = (long)tk.time_msc;
+      for(int i = 0; i < ArraySize(P); i++)
+      {
+         if(P[i].dir == 0 || P[i].inMsc == 0) continue;
+         bool isOpen = PositionSelectByTicket((ulong)P[i].id) || !P[i].hasOut;
+         string one = "";
+         int c = isOpen ? -1 : FindCache(P[i].id);
+         if(c >= 0) one = gExcJs[c];
+         else
+         {
+            double best, worst; long bt, wt;
+            bool ok = Excursion(sym, P[i].dir, P[i].inMsc, isOpen ? nowMsc : P[i].outMsc, best, bt, worst, wt);
+            if(bt == 0) continue;
+            one = "{\"position_id\":" + I(P[i].id) + ",\"best\":" + N(best, digits) + ",\"best_time\":" + I(bt)
+                + ",\"worst\":" + N(worst, digits) + ",\"worst_time\":" + I(wt) + ",\"open\":" + B(isOpen) + ",\"exact\":" + B(ok) + "}";
+            if(!isOpen && ok) { int k = ArraySize(gExcId); ArrayResize(gExcId, k + 1); ArrayResize(gExcJs, k + 1); gExcId[k] = P[i].id; gExcJs[k] = one; }
+         }
+         js += (ne++ > 0 ? "," : "") + one;
+      }
       js += "],";
 
       //--- shared daily cap (same key the EAs use)
