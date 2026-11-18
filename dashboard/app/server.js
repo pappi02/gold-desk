@@ -22,6 +22,7 @@ const ALERT_TO = process.env.ALERT_TO || "";
 const ALERT_FROM = process.env.ALERT_FROM || "";
 const STALE_SEC = Number(process.env.STALE_SEC || 90);
 const DISCONNECT_SEC = Number(process.env.DISCONNECT_SEC || 120);
+const ALGO_OFF_SEC = Number(process.env.ALGO_OFF_SEC || 120);
 const DD_ALERT_PCT = Number(process.env.DD_ALERT_PCT || 10);   // first drawdown alert, then every +5%
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -121,7 +122,7 @@ function problem(key, active, subject, lines) {
   state.problems[key] = p;
 }
 
-let staleSince = null, disconnectedSince = null;
+let staleSince = null, disconnectedSince = null, algoOffSince = null;
 async function checkAlerts() {
   const d = await readData();
   const now = Date.now();
@@ -138,8 +139,10 @@ async function checkAlerts() {
   problem("disconnected", disconnectedSince !== null && (now - disconnectedSince) / 1000 > DISCONNECT_SEC, "MT5 is disconnected from the broker",
     ["The terminal reports no connection to MetaQuotes-Demo for over 2 minutes.", "EAs cannot open or manage trades until it reconnects."]);
   const algoOff = j.terminal && (j.terminal.algo_trading === false || (j.account && j.account.expert_allowed === false));
-  problem("algo", !!algoOff, "Algo trading is switched off",
-    ["MT5's Algo Trading is off (or not allowed on the account), so the EAs will not open or close trades."]);
+  // MT5 reports algo off for a few seconds while it starts up, so wait like the disconnect alert does
+  if (algoOff) { algoOffSince ??= now; } else algoOffSince = null;
+  problem("algo", algoOffSince !== null && (now - algoOffSince) / 1000 > ALGO_OFF_SEC, "Algo trading is switched off",
+    ["MT5's Algo Trading has been off (or not allowed on the account) for over 2 minutes, so the EAs will not open or close trades."]);
 
   // trade open / close
   const deals = Array.isArray(j.deals) ? j.deals : [];
