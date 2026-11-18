@@ -1,0 +1,13 @@
+InpMode=0
+InpTrigger=0
+InpRiskPct=2.0
+InpStopATR=1.0
+InpMaxDays=10
+InpServerGMT=2
+InpLonStart=1000
+InpLonEnd=1400
+InpNYStart=1530
+InpNYEnd=2000
+InpSkipIfMinLotTooBig=false
+InpMagic=260117
+InpLogFile=HTF15_trades.csv

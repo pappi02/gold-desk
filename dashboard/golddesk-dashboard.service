@@ -1,0 +1,33 @@
+[Unit]
+Description=Gold Desk dashboard (read-only MT5 trade monitor + email alerts)
+After=network-online.target tailscaled.service mt5.service
+Wants=network-online.target
+
+[Service]
+User=mt5
+Group=mt5
+WorkingDirectory=/srv/golddesk
+ExecStart=/usr/bin/node /srv/golddesk/server.js
+Environment=GOLDDESK_HOSTS=127.0.0.1,100.112.136.21
+Environment=GOLDDESK_PORT=8088
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/golddesk/alerts.env
+StateDirectory=golddesk
+Restart=always
+RestartSec=5
+# Sandbox: reads the MT5 export, writes only its own state directory.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CPUQuota=30%
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

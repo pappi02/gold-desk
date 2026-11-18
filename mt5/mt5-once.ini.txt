@@ -1,0 +1,11 @@
+[Experts]
+AllowLiveTrading=1
+AllowDllImport=0
+Enabled=1
+Account=0
+Profile=0
+[StartUp]
+Expert=Gold_HTF_Bias_15M_EA
+ExpertParameters=gold_htf.set
+Symbol=XAUUSD
+Period=M15

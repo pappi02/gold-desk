@@ -1,0 +1,28 @@
+[Unit]
+Description=MetaTrader 5 (Gold HTF Bias EA, demo) on a private X display
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mt5
+Group=mt5
+WorkingDirectory=/home/mt5
+ExecStart=/home/mt5/mt5-headless.sh
+# Close MT5 cleanly first so it saves its charts/EA settings.
+ExecStop=/home/mt5/mt5-stop.sh
+TimeoutStopSec=120
+KillMode=control-group
+Restart=on-failure
+RestartSec=30
+# Same sandbox as the mt5 user's sessions: the website always wins.
+CPUQuota=120%
+CPUWeight=20
+IOWeight=20
+MemoryHigh=2500M
+MemoryMax=3G
+TasksMax=2000
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

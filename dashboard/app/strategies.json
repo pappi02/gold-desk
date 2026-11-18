@@ -1,0 +1,47 @@
+{
+  "account_label": "Gold Desk · MetaQuotes-Demo",
+  "cap_max": 4,
+  "risk_pct": 2,
+  "strategies": [
+    {
+      "id": "s1",
+      "magic": 260117,
+      "name": "Strategy 1",
+      "title": "HTF Bias · 15M",
+      "version": "1.12",
+      "timeframe": "M15",
+      "style": "Trend-following breakout",
+      "color": "#5b8def",
+      "risk_pct": 2,
+      "summary": "Daily + H4 trend agree (close vs EMA50, EMA20 vs EMA50). Enters on a fresh M15 close through the previous-day high/low in the London (10:00–14:00 EAT) or NY (15:30–20:00 EAT) window. Stop 1.0 × H4 ATR; exits on the first H4 close back across the H4 EMA20 or after 10 days. Max 1 trade a day.",
+      "backtest": { "period": "Jan 2020 – Nov 2026", "trades": 232, "trades_per_year": 34, "win_pct": 30.2, "avg_r": 0.79, "pf": 2.22, "max_dd_r": 16.6, "losing_run": 11, "avg_win_r": 4.77, "avg_loss_r": -0.93, "pass_avg_r": 0.15 }
+    },
+    {
+      "id": "s2",
+      "magic": 260118,
+      "name": "Strategy 2",
+      "title": "VWAP Fade · 5M",
+      "version": "2.01",
+      "timeframe": "M5",
+      "style": "Mean reversion",
+      "color": "#c084fc",
+      "risk_pct": 2,
+      "summary": "On range days (not all six 10:00–10:30 EAT closes on one side of VWAP), fades a poke of the 2.0σ VWAP band once an M5 candle closes back inside, 10:00–12:00 EAT. Stop beyond the poke extreme + 1.0 × H1 ATR; target 2R; flat at 17:00 EAT. Max 3 a day, stops for the day after −2R.",
+      "backtest": { "period": "Jan 2020 – Nov 2026", "trades": 188, "trades_per_year": 27, "win_pct": 44.1, "avg_r": 0.096, "pf": 1.18, "max_dd_r": 6.4, "losing_run": 7, "avg_win_r": 1.39, "avg_loss_r": -0.93, "pass_avg_r": 0.03 }
+    },
+    {
+      "id": "c",
+      "magic": 260119,
+      "name": "Strategy C",
+      "title": "Breakout · ATR Trail",
+      "version": "1.02",
+      "timeframe": "M15",
+      "style": "Trend-following breakout",
+      "color": "#f5a524",
+      "risk_pct": 2,
+      "summary": "Same Daily + H4 bias. Enters on a fresh M15 close through the previous-day high/low or the Asian range (03:00–10:00 EAT) in the London/NY windows. Stop 0.75 × H4 ATR; after +1R a 3 × ATR trailing stop; 10-day time stop. Max 3 a day; positions can overlap.",
+      "triggers": { "PD": "Prev-day break", "AS": "Asian break" },
+      "backtest": { "period": "Jan 2020 – Nov 2026", "trades": 1441, "trades_per_year": 210, "win_pct": 26.4, "avg_r": 0.485, "pf": 1.68, "max_dd_r": 82.8, "losing_run": 41, "avg_win_r": 4.55, "avg_loss_r": -0.98, "pass_avg_r": 0.15 }
+    }
+  ]
+}

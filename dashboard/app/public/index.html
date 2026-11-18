@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0c0e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Gold Desk</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/ibm-plex-mono-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hdr">
+    <a class="wordmark" href="#/overview" aria-label="Gold Desk home">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2 15.5 7 9l3.5 3L18 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/><path d="M14 4h4v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg>
+      <span>GOLD<b>/</b>DESK</span>
+    </a>
+    <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+    <div class="hdr-status">
+      <span class="live" id="live"><i></i><span id="live-text">connecting</span></span>
+      <span class="hdr-sep"></span>
+      <span class="hdr-kv hide-md hide-lg"><span>ACCT</span><b id="h-acct">—</b><em id="h-mode"></em></span>
+      <span class="hdr-kv"><span>EAT</span><b id="h-clock">--:--:--</b></span>
+    </div>
+  </header>
+  <main class="view" id="view"><div class="boot">Loading Gold Desk…</div></main>
+  <nav class="dock" id="dock" aria-label="Sections"></nav>
+  <div class="sheet" id="sheet" hidden><div class="sheet-panel" id="sheet-panel" role="menu" aria-label="More sections"></div></div>
+  <div class="kbd-help" id="kbd-help" hidden>
+    <div class="kbd-card">
+      <div class="kbd-title">Keyboard</div>
+      <div class="kbd-row"><kbd>1</kbd>–<kbd>8</kbd><span>switch section</span></div>
+      <div class="kbd-row"><kbd>g</kbd> then <kbd>1</kbd>/<kbd>2</kbd>/<kbd>c</kbd><span>open a strategy</span></div>
+      <div class="kbd-row"><kbd>?</kbd><span>this help</span></div>
+      <div class="kbd-row"><kbd>Esc</kbd><span>close</span></div>
+    </div>
+  </div>
+  <script src="/vendor/chart.umd.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

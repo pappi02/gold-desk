@@ -1,0 +1,2 @@
+InpRiskPct=2.0
+InpSkipIfMinLotTooBig=false
