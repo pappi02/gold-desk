@@ -9,18 +9,20 @@
 //|          may overlap; optional cap on open positions              |
 //| Stop   : 0.75 x ATR14(H4, Wilder)                                 |
 //| Exit   : no TP. After +1R, trailing stop = best price - 3 x ATR.  |
+//|          Optional: stop to entry once +InpBreakevenR (0 = off).   |
 //|          Time stop 10 days.                                       |
 //| Attach to an XAUUSD (or XAUUSDc) M15 chart. Works on cent accts.  |
 //| Each closed trade is logged to MQL5/Files/<InpLogFile>.           |
 //+------------------------------------------------------------------+
 #property copyright "Gold Desk"
-#property version   "1.02"   // 1.02: shared 4-trades/day cap across all Gold EAs; 1.01: lot size from OrderCalcProfit (tick value bug)
+#property version   "1.03"   // 1.03: optional breakeven stop (InpBreakevenR, off by default); 1.02: shared 4-trades/day cap across all Gold EAs; 1.01: lot size from OrderCalcProfit (tick value bug)
 #include <Trade/Trade.mqh>
 
 input double InpRiskPct        = 2.0;    // Risk per trade (% of balance)
 input double InpStopATR        = 0.75;   // Initial stop (x H4 ATR14)
 input double InpTrailATR       = 3.0;    // Trailing distance (x H4 ATR14)
 input double InpTrailStartR    = 1.0;    // Start trailing after +R
+input double InpBreakevenR     = 0.0;    // Move stop to entry after +R (0 = off)
 input int    InpMaxDays        = 10;     // Time stop (days)
 input int    InpMaxTradesPerDay= 3;      // Max NEW trades per broker day
 input int    InpMaxOpen        = 0;      // Max open positions (0 = no cap)
@@ -218,8 +220,14 @@ void ManagePositions()
       if(atr == EMPTY_VALUE || atr <= 0) continue;
       double r = InpStopATR * atr;
       double best = CachedBest(tk, dir, ot, op, refresh);
-      if((best - op) * dir < InpTrailStartR * r) continue;
-      double ns = NormalizeDouble(best - dir * InpTrailATR * atr, _Digits);
+      double ns = 0;                                            // candidate stop (0 = none yet)
+      if((best - op) * dir >= InpTrailStartR * r) ns = NormalizeDouble(best - dir * InpTrailATR * atr, _Digits);
+      if(InpBreakevenR > 0 && (best - op) * dir >= InpBreakevenR * r)
+      {
+         double be = NormalizeDouble(op, _Digits);            // the tighter of breakeven and the trail
+         ns = ns == 0 ? be : dir == 1 ? MathMax(ns, be) : MathMin(ns, be);
+      }
+      if(ns == 0) continue;
       if((dir == 1 && ns > sl + 10*pt) || (dir == -1 && (sl == 0 || ns < sl - 10*pt)))
          trade.PositionModify(tk, ns, 0);
    }
