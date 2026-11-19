@@ -44,14 +44,11 @@ window.GDChart = (() => {
           c.strokeStyle = color; c.lineWidth = Math.max(1, Math.round(hr)); c.setLineDash(dash ? dash.map((d) => d * hr) : []);
           c.beginPath(); c.moveTo(x1, Math.round(y) + .5); c.lineTo(x2, Math.round(y) + .5); c.stroke();
         };
-        // levels: thin segments, tiny tag at the right end
+        // levels: thin lines from the candle that made them to the right edge (the price-scale tag names them)
         if (S.show.levels) for (const g of this.items.segs) {
-          const x1 = X(g.t1), x2 = X(g.t2), y = Y(g.p);
-          if (x1 == null || x2 == null || y == null || x2 < 0 || x1 > W) continue;
-          line(x1, y, x2, g.color);
-          if (x2 > W - 6 * hr) continue;                       // runs off the edge: the price-scale tag names it
-          c.font = font(10); c.fillStyle = g.color; c.textAlign = "right"; c.textBaseline = "bottom";
-          c.fillText(g.label, x2 - 2 * hr, y - 2 * vr);
+          const x1 = X(g.t1), y = Y(g.p);
+          if (x1 == null || y == null || x1 > W) continue;
+          line(Math.max(0, x1), y, W, g.color);
         }
         // trades: TradingView-style position zones
         const placed = [];                                     // label boxes already drawn (skip overlapping ones)
@@ -102,34 +99,48 @@ window.GDChart = (() => {
   }
   const asBar = (b, off) => ({ time: toChart(b[0], off), open: b[1], high: b[2], low: b[3], close: b[4] });
 
+  // chart bar that contains time t (lines start on the candle itself)
+  function barAt(t) {
+    const ts = S.times; let lo = 0, hi = ts.length - 1, r = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (ts[m] <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+    return r < 0 ? null : ts[r];
+  }
+  // M15 bar in [t1, t2) holding the extreme (hi=true: highest high, else lowest low)
+  function extreme(t1, t2, hi) {
+    let best = null;
+    for (const b of S.m15) {
+      if (b.time < t1 || b.time >= t2) continue;
+      if (!best || (hi ? b.high > best.high : b.low < best.low)) best = b;
+    }
+    return best;
+  }
+
   function computeLevels() {
-    const th = THEME[S.theme], segs = [], first = S.times[0] ?? 0, tf = S.tf;
-    const lines = [];
-    if (tf !== "D1" && S.d1.length > 1) {                       // previous day high/low over each broker day
-      for (let i = 1; i < S.d1.length; i++) {
-        const t1 = S.d1[i].time, t2 = i + 1 < S.d1.length ? S.d1[i + 1].time : t1 + 86400;
-        if (t2 < first) continue;
-        segs.push({ t1, t2, p: S.d1[i - 1].high, color: th.pd, label: "PDH" }, { t1, t2, p: S.d1[i - 1].low, color: th.pd, label: "PDL" });
-        if (i === S.d1.length - 1) lines.push(["PDH", S.d1[i - 1].high, th.pd], ["PDL", S.d1[i - 1].low, th.pd]);
+    const th = THEME[S.theme], segs = [], lines = [], tf = S.tf;
+    const add = (label, p, t, color) => {
+      const t1 = t == null ? null : barAt(t);
+      if (t1 != null) segs.push({ t1, p, color });
+      lines.push([label, p, color]);
+    };
+    // previous day only: yesterday's high/low, from the candle that printed it
+    const n = S.d1.length;
+    if (n >= 2) {
+      const y = S.d1[n - 2], t2 = S.d1[n - 1].time;
+      const h = extreme(y.time, t2, true), l = extreme(y.time, t2, false);
+      add("PDH", y.high, tf === "D1" ? y.time : h ? h.time : y.time, th.pd);
+      add("PDL", y.low, tf === "D1" ? y.time : l ? l.time : y.time, th.pd);
+    }
+    // today's Asian range only (03:00-10:00 EAT M15, locked at 10:00 as in the EA)
+    if (tf !== "D1" && S.m15.length) {
+      const last = S.m15[S.m15.length - 1].time, day = Math.floor(last / 86400) * 86400;
+      const s1 = day + 3 * 3600, s2 = day + 10 * 3600;
+      const inS = S.m15.filter((b) => b.time >= s1 && b.time < s2);
+      if (inS.length >= 16 && last >= s2) {
+        const h = extreme(s1, s2, true), l = extreme(s1, s2, false);
+        add("ASH", h.high, h.time, th.as);
+        add("ASL", l.low, l.time, th.as);
       }
     }
-    if (["M5", "M15", "H1"].includes(tf) && S.m15.length) {     // Asian range 03:00-10:00 EAT, locked at 10:00 (as the EA)
-      const byDay = new Map();
-      for (const b of S.m15) {
-        const day = Math.floor(b.time / 86400) * 86400, m = (b.time - day) / 60;
-        if (m < 180 || m >= 600) continue;
-        const d = byDay.get(day) || { h: -Infinity, l: Infinity, n: 0 };
-        d.h = Math.max(d.h, b.high); d.l = Math.min(d.l, b.low); d.n++; byDay.set(day, d);
-      }
-      const now = S.times[S.times.length - 1] ?? 0, days = [...byDay.keys()].sort((a, b) => a - b);
-      for (const day of days) {
-        const d = byDay.get(day);
-        if (d.n < 16 || now < day + 600 * 60 || day + 20 * 3600 < first) continue;
-        segs.push({ t1: day + 3 * 3600, t2: day + 20 * 3600, p: d.h, color: th.as, label: "ASH" }, { t1: day + 3 * 3600, t2: day + 20 * 3600, p: d.l, color: th.as, label: "ASL" });
-        if (day === days[days.length - 1]) lines.push(["ASH", d.h, th.as], ["ASL", d.l, th.as]);
-      }
-    }
-    // price-scale tags for today's levels (no line across the chart)
     for (const pl of S.priceLines) S.series.removePriceLine(pl);
     S.priceLines = S.show.levels ? lines.map(([title, price, color]) => S.series.createPriceLine({ price, color, lineVisible: false, axisLabelVisible: true, title })) : [];
     return segs;
