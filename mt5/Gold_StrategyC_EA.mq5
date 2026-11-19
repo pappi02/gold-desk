@@ -360,7 +360,24 @@ void OnTradeTransaction(const MqlTradeTransaction &tr, const MqlTradeRequest &rq
    long reason = HistoryDealGetInteger(tr.deal, DEAL_REASON);
    string why = reason == DEAL_REASON_SL ? "Stop/Trail" : reason == DEAL_REASON_TP ? "TP" : "Time/manual";
    if(MQLInfoInteger(MQL_TESTER))                     // tester: one journal line per closed trade, for reports
-      PrintFormat("CTRADE|%s|%s|%s|%.2f|%.2f|%s|%.2f", trg, TimeToString(tin), typ == DEAL_TYPE_BUY ? "BUY" : "SELL", pnl, risk, why, HistoryDealGetDouble(tr.deal, DEAL_VOLUME));
+   {
+      // farthest favourable / adverse move (in R of the initial stop), from M1 bars over the trade's life
+      datetime tout = (datetime)HistoryDealGetInteger(tr.deal, DEAL_TIME);
+      double hi[], lo[], dist = 0, mfe = 0, mae = 0; string mfeT = "";
+      if(HistorySelectByPosition(pid))
+         for(int i = 0; i < HistoryDealsTotal(); i++)
+         { ulong dl = HistoryDealGetTicket(i); if(HistoryDealGetInteger(dl, DEAL_ENTRY) == DEAL_ENTRY_IN) dist = InpStopATR * ParseTag(HistoryDealGetString(dl, DEAL_COMMENT), "A="); }
+      HistoryDealSelect(tr.deal);
+      int n1 = CopyHigh(_Symbol, PERIOD_M1, tin, tout, hi), n2 = CopyLow(_Symbol, PERIOD_M1, tin, tout, lo);
+      if(dist > 0 && n1 > 0 && n2 > 0)
+         for(int i = 0; i < MathMin(n1, n2); i++)
+         {
+            double f = typ == DEAL_TYPE_BUY ? (hi[i] - pin) / dist : (pin - lo[i]) / dist;
+            double a = typ == DEAL_TYPE_BUY ? (pin - lo[i]) / dist : (hi[i] - pin) / dist;
+            if(f > mfe) mfe = f; if(a > mae) mae = a;
+         }
+      PrintFormat("CTRADE|%s|%s|%s|%.2f|%.2f|%s|%.2f|%.3f|%.3f", trg, TimeToString(tin), typ == DEAL_TYPE_BUY ? "BUY" : "SELL", pnl, risk, why, HistoryDealGetDouble(tr.deal, DEAL_VOLUME), mfe, mae);
+   }
    bool newFile = !FileIsExist(InpLogFile);
    int fh = FileOpen(InpLogFile, FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
    if(fh == INVALID_HANDLE) return;
