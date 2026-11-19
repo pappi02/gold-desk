@@ -13,13 +13,14 @@
     strategies: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
     analytics: '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
     risk: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
-    market: '<path d="M9 5v4"/><rect x="7" y="9" width="4" height="6" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect x="15" y="5" width="4" height="8" rx="1"/><path d="M17 13v3"/><path d="M3 3v18h18"/>',
+    chart: '<path d="M9 5v4"/><rect x="7" y="9" width="4" height="6" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect x="15" y="5" width="4" height="8" rx="1"/><path d="M17 13v3"/><path d="M3 3v18h18"/>',
+    market: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
     system: '<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>',
     arrow: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   };
   const ico = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${P[k]}</svg>`;
-  const NAV = [["overview", "Overview"], ["positions", "Positions"], ["trades", "Trades"], ["strategies", "Strategies"], ["analytics", "Analytics"], ["risk", "Risk"], ["market", "Market"], ["system", "System"]];
+  const NAV = [["overview", "Overview"], ["chart", "Chart"], ["positions", "Positions"], ["trades", "Trades"], ["strategies", "Strategies"], ["analytics", "Analytics"], ["risk", "Risk"], ["market", "Market"], ["system", "System"]];
 
   // ------------------------------------------------------------ formatting
   const money = (v, sign = false) => v == null || !isFinite(v) ? "—" : (sign && v > 0 ? "+" : v < 0 ? "−" : "") + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -407,6 +408,13 @@
     return `${num(cur, 2)}${moved ? ` <span class="tag ${locked ? "ok" : "info"}" title="initial ${num(init, 2)}">${locked ? "locked" : "trailed"}</span>` : ""}`;
   }
 
+  PAGES.chart = {
+    title: "Chart",
+    render() { return `<div class="tv" id="tvp"></div>`; },
+    after(m) { GDChart.mount($("#tvp"), { model: m, focus: route.arg }); },
+    live(m) { GDChart.update(m); },
+  };
+
   PAGES.trades = {
     title: "Trades",
     render(m) {
@@ -467,7 +475,7 @@
     const held = ((t.closeMs || Date.now()) - t.openMs) / 1000;
     const kv = [["Opened", fmtTime(t.openMs)], ["Entry", num(t.openPrice, 2)], ["Lots", num(t.volume, 2)], ["Closed", t.open ? "open" : fmtTime(t.closeMs)], ["Exit", t.open ? "—" : num(t.closePrice, 2)], ["Exit reason", t.open ? "—" : esc(REASON[t.reason] ?? t.reason)],
       ["Position", `#${t.id}`], ["Magic", t.magic], ["Initial stop", t.initSL ? num(t.initSL, 2) : "—"], ["Stop distance", t.initSL ? num(Math.abs(t.openPrice - t.initSL), 2) : "—"],
-      ["Risk at entry", money(t.risk)], ["Target", t.tp ? num(t.tp, 2) : "none"], ["Held", dur(held)], ["Trigger", t.trigger === "AS" ? "Asian-range break" : t.trigger === "PD" ? "Prev-day break" : "—"], ["EA comment", esc(t.comment)]];
+      ["Risk at entry", money(t.risk)], ["Target", t.tp ? num(t.tp, 2) : "none"], ["Held", dur(held)], ["Trigger", t.trigger === "AS" ? "Asian-range break" : t.trigger === "PD" ? "Prev-day break" : "—"], ["EA comment", esc(t.comment)], ["Chart", linkTo(`#/chart/${t.id}`, "Open on chart")]];
     const exc = (x) => x ? `${num(x.px, 2)} · <span class="${ud(x.usd)}">${x.R != null ? rr(x.R) : money(x.usd, true)}</span> · ${money(x.usd, true)}<div class="muted">${fmtTime(x.ms)}</div>` : "—";
     kv.splice(6, 0, [`Farthest in favour${t.open ? " so far" : ""}`, exc(t.best)], [`Farthest against${t.open ? " so far" : ""}`, exc(t.worst)]);
     return `<tr class="det"><td colspan="11"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px 24px">${kv.map(([k, v]) => `<div><div class="muted" style="font:500 10px var(--mono);letter-spacing:.1em;text-transform:uppercase">${k}</div><div class="m">${v}</div></div>`).join("")}</div></td></tr>`;
@@ -754,6 +762,9 @@
     if (!M) return;
     const key = route.name + "/" + (route.arg || ""), page = PAGES[route.name];
     const sameRoute = key === lastKey, keepScroll = sameRoute ? window.scrollY : 0;
+    if (sameRoute && page.live) { page.live(M); setStatus(); return; }
+    if (window.GDChart) GDChart.destroy();
+    $("#view").classList.toggle("view-chart", route.name === "chart");
     if (!sameRoute) { prevVals.clear(); lastKey = key; }
     const focus = document.activeElement?.id;
     $("#view").innerHTML = page.render(M);

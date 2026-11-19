@@ -292,3 +292,34 @@ kbd { font: 500 11px var(--mono); border: 1px solid var(--line-2); border-bottom
   .page-h .r { margin-left: 0; width: 100%; }
 }
 @media (max-width: 420px) { .wordmark span { display: none; } .wordmark { padding: 0 12px; } }
+
+/* ------------------------------------------------------------ chart page (TradingView-style) */
+.view.view-chart { max-width: none; padding: 0; }
+.tv { --tv-bg: #fff; --tv-fg: #131722; --tv-mut: #787b86; --tv-bd: #e0e3eb; --tv-hov: #f0f3fa; --tv-on: #2962ff;
+  display: flex; flex-direction: column; width: 100%; min-width: 0; overflow: hidden; height: calc(100dvh - var(--hdr)); background: var(--tv-bg); color: var(--tv-fg); }
+.tv.tv-dark { --tv-bg: #0b0c0e; --tv-fg: #d1d4dc; --tv-mut: #787b86; --tv-bd: #2a2e39; --tv-hov: #1e222d; --tv-on: #5b8def; }
+.tv-bar { flex: none; display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 8px; border-bottom: 1px solid var(--tv-bd); font: 500 12.5px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif; overflow: hidden; }
+.tv-sym { font-weight: 700; padding: 0 8px; letter-spacing: .02em; }
+.tv-div { width: 1px; height: 20px; background: var(--tv-bd); margin: 0 4px; flex: none; }
+.tv-tfs { display: flex; gap: 1px; }
+.tv-bar button { all: unset; cursor: pointer; padding: 5px 8px; border-radius: 4px; color: var(--tv-fg); white-space: nowrap; }
+.tv-bar button:hover { background: var(--tv-hov); }
+.tv-bar button.on { color: var(--tv-on); }
+.tv-tg { color: var(--tv-mut) !important; }
+.tv-tg.on { color: var(--tv-fg) !important; }
+.tv-sp { flex: 1; }
+.tv-ic { display: grid; place-items: center; padding: 5px !important; }
+.tv-ic svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tv-pane { position: relative; flex: 1; min-height: 0; min-width: 0; width: 100%; overflow: hidden; }
+.tv-legend { position: absolute; top: 8px; left: 10px; z-index: 3; pointer-events: none; font: 12px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif; color: var(--tv-fg); white-space: nowrap; }
+.tv-legend b { font-weight: 500; margin-right: 6px; }
+.tv-legend span { color: var(--tv-mut); }
+.tv-legend i { font-style: normal; margin: 0 6px 0 2px; }
+@media (max-width: 900px) {
+  .tv { height: calc(100dvh - var(--hdr) - 58px - env(safe-area-inset-bottom)); }
+  .tv-bar { padding: 0 4px; gap: 0; } .tv-bar button { padding: 5px 6px; } .tv-sym { padding: 0 6px; }
+}
+@media (max-width: 600px) {
+  .tv-sym, .tv-sym + .tv-div { display: none; }
+  .tv-legend { font-size: 11px; } .tv-legend b { display: block; margin-bottom: 1px; }
+}

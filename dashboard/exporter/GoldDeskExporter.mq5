@@ -7,13 +7,15 @@
 //+------------------------------------------------------------------+
 #property service
 #property copyright "Gold Desk"
-#property version   "1.10"
+#property version   "1.20"
 
 input string InpSymbol     = "XAUUSD";                  // Symbol to describe
 input int    InpIntervalMs = 2000;                      // Export interval (ms)
 input string InpFile       = "golddesk.json";           // Output file (MQL5/Files)
 input string InpCapMagics  = "260117,260118,260119";    // Magics sharing the daily cap
 input int    InpMaxAllPerDay = 4;                       // Shared daily cap (for display)
+input int    InpBarsEverySec = 30;                      // Candle history file interval (s)
+input string InpBarsFile   = "golddesk_bars.json";      // Candle history for the chart page
 
 string Q(string s)
 {
@@ -88,6 +90,32 @@ bool Excursion(const string sym, const int dir, const long inMsc, const long out
 int FindPos(PosInfo &p[], const long id) { for(int i = 0; i < ArraySize(p); i++) if(p[i].id == id) return i; return -1; }
 int FindCache(const long id) { for(int i = 0; i < ArraySize(gExcId); i++) if(gExcId[i] == id) return i; return -1; }
 
+//--- candle history for the dashboard chart: [time(server), o, h, l, c] per timeframe
+string BarsJs(const string sym, const ENUM_TIMEFRAMES tf, const int count, const int digits)
+{
+   MqlRates r[]; ArraySetAsSeries(r, false);
+   int n = CopyRates(sym, tf, 0, count, r);
+   string js = "[";
+   for(int i = 0; i < n; i++)
+      js += (i > 0 ? "," : "") + "[" + IntegerToString((long)r[i].time) + "," + DoubleToString(r[i].open, digits) + "," + DoubleToString(r[i].high, digits)
+          + "," + DoubleToString(r[i].low, digits) + "," + DoubleToString(r[i].close, digits) + "]";
+   return js + "]";
+}
+void WriteBars(const string sym, const int offset)
+{
+   int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   string js = "{\"symbol\":\"" + sym + "\",\"server_gmt_offset\":" + IntegerToString(offset) + ",\"written\":" + IntegerToString((long)TimeTradeServer()) + ",\"tf\":{"
+             + "\"M5\":"  + BarsJs(sym, PERIOD_M5, 3000, dg)  + ",\"M15\":" + BarsJs(sym, PERIOD_M15, 3000, dg)
+             + ",\"H1\":" + BarsJs(sym, PERIOD_H1, 2500, dg)  + ",\"H4\":"  + BarsJs(sym, PERIOD_H4, 1500, dg)
+             + ",\"D1\":" + BarsJs(sym, PERIOD_D1, 600, dg)   + "}}";
+   uchar buf[]; int len = StringToCharArray(js, buf, 0, WHOLE_ARRAY, CP_UTF8);
+   int fh = FileOpen("golddesk_bars.tmp", FILE_WRITE | FILE_BIN);
+   if(fh == INVALID_HANDLE) return;
+   FileWriteArray(fh, buf, 0, MathMax(len - 1, 0));
+   FileClose(fh);
+   FileMove("golddesk_bars.tmp", 0, InpBarsFile, FILE_REWRITE);
+}
+
 void OnStart()
 {
    string sym = InpSymbol;
@@ -97,6 +125,7 @@ void OnStart()
    int hATR4 = iATR(sym, PERIOD_H4, 14), hATR1 = iATR(sym, PERIOD_H1, 14);
    string capMagics[]; int nCap = StringSplit(InpCapMagics, ',', capMagics);
    long seq = 0;
+   datetime lastBars = 0;
 
    while(!IsStopped())
    {
@@ -259,6 +288,7 @@ void OnStart()
          FileClose(fh);
          FileMove("golddesk.tmp", 0, InpFile, FILE_REWRITE);
       }
+      if(TimeLocal() - lastBars >= InpBarsEverySec) { WriteBars(sym, offset); lastBars = TimeLocal(); }
       Sleep(InpIntervalMs);
    }
 }

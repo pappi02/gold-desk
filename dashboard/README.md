@@ -19,3 +19,10 @@ Read-only web dashboard + email alerts for the three Gold EAs on the VPS
 - Firewall: `ufw allow in on tailscale0 to any port 8088` (tailnet only).
 - Deploy: tar app/ to /srv/golddesk (root-owned), `systemctl restart golddesk-dashboard`.
 - Strategy profiles / backtest expectations live in app/strategies.json.
+
+## Chart page (#/chart)
+- TradingView Lightweight Charts 4.2.0, vendored in `app/public/vendor/` (Apache-2.0, licence alongside); drawing code in `app/public/chart.js`.
+- Candles come from `golddesk_bars.json`, which exporter v1.20 rewrites every 30 s (M5/M15 3000 bars, H1 2500, H4 1500, D1 600). The live candle moves with the bid between refreshes. Served by `/api/bars?tf=M15[&since=<server time>]`.
+- Draws PDH/PDL per broker day, ASH/ASL (M15 bars 03:00-10:00 EAT, locked at 10:00, as the EAs compute it), and each trade as a position zone: red = entry to initial stop, green = entry to the farthest point reached, a dashed stop path, an exit dot and one small label.
+- Stop path: the server records every SL change it sees into `/var/lib/golddesk/sl-history.json` (`/api/stops`); trades from before 2026-11-19 only have their initial and final stop.
+- Times are EAT. `#/chart/<position id>` zooms to a trade (the "Open on chart" link in trade details).

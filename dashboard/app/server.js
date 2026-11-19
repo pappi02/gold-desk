@@ -15,7 +15,9 @@ const HOSTS = (process.env.GOLDDESK_HOSTS || "127.0.0.1").split(",").map((h) => 
 const PORT = Number(process.env.GOLDDESK_PORT || 8088);
 const PUBLIC_DIR = path.join(__dirname, "public");
 const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, "strategies.json"), "utf8"));
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
+const BARS_FILE = process.env.GOLDDESK_BARS || path.join(path.dirname(DATA_FILE), "golddesk_bars.json");
+const TFS = ["M5", "M15", "H1", "H4", "D1"];
 
 const RESEND_KEY = process.env.RESEND_API_KEY || "";
 const ALERT_TO = process.env.ALERT_TO || "";
@@ -42,6 +44,43 @@ async function readData() {
     last.error = String(e.message || e);
   }
   return last;
+}
+
+// ---------------------------------------------------------------- candle history (chart page)
+// The exporter rewrites golddesk_bars.json every 30 s; each timeframe is re-serialised once per change.
+let bars = { mtimeMs: 0, offset: 2, tf: {} };
+async function readBars() {
+  try {
+    const st = await fsp.stat(BARS_FILE);
+    if (st.mtimeMs !== bars.mtimeMs) {
+      const j = JSON.parse(await fsp.readFile(BARS_FILE, "utf8"));
+      bars = { mtimeMs: st.mtimeMs, offset: j.server_gmt_offset ?? 2, tf: j.tf || {} };
+    }
+  } catch { /* not written yet */ }
+  return bars;
+}
+
+// ---------------------------------------------------------------- stop-loss history (chart page)
+// The exporter only shows each position's current SL, so record every change seen:
+// { position_id: [[utc_sec, sl], ...] }, kept 200 days after the last change.
+const SL_FILE = path.join(STATE_DIR, "sl-history.json");
+let slHist = {};
+try { slHist = JSON.parse(fs.readFileSync(SL_FILE, "utf8")); } catch { /* first run */ }
+function recordStops(j) {
+  let changed = false;
+  const off = j.server_gmt_offset ?? 2;
+  for (const p of j.positions || []) {
+    const id = String(p.position_id), h = slHist[id] || (slHist[id] = []);
+    if (!h.length) {                                     // seed with the stop at entry
+      const e = (j.deals || []).find((d) => d.position_id === p.position_id && d.entry === 0);
+      if (e && e.sl) h.push([e.time - off * 3600, e.sl]);
+    }
+    if (p.sl && (!h.length || Math.abs(h[h.length - 1][1] - p.sl) > 0.001)) { h.push([Math.floor(Date.now() / 1000), p.sl]); changed = true; }
+  }
+  if (!changed) return;
+  const cutoff = Date.now() / 1000 - 200 * 86400;
+  for (const k of Object.keys(slHist)) if (!slHist[k].length || slHist[k][slHist[k].length - 1][0] < cutoff) delete slHist[k];
+  try { fs.mkdirSync(STATE_DIR, { recursive: true }); fs.writeFileSync(SL_FILE + ".tmp", JSON.stringify(slHist)); fs.renameSync(SL_FILE + ".tmp", SL_FILE); } catch (e) { console.error("sl history save failed:", e.message); }
 }
 
 // ---------------------------------------------------------------- equity history
@@ -134,6 +173,7 @@ async function checkAlerts() {
     [`The dashboard has not received data from MT5 for ${Math.round(ageSec)} s.`, "MT5 or the GoldDeskExporter service may be down. Check: ssh gents 'systemctl status mt5'."]);
   if (!d.json) { saveState(); return; }
   const j = d.json, off = j.server_gmt_offset ?? 2;
+  if (ageSec < STALE_SEC) recordStops(j);
 
   if (j.terminal && j.terminal.connected === false) { disconnectedSince ??= now; } else disconnectedSince = null;
   problem("disconnected", disconnectedSince !== null && (now - disconnectedSince) / 1000 > DISCONNECT_SEC, "MT5 is disconnected from the broker",
@@ -241,6 +281,14 @@ const server = http.createServer(async (req, res) => {
       const meta = { file_age_sec: (Date.now() - d.mtimeMs) / 1000, served_at: Date.now(), error: d.error };
       return send(res, 200, `{"meta":${JSON.stringify(meta)},"data":${d.text}}`);
     }
+    if (url.pathname === "/api/bars") {
+      const tf = url.searchParams.get("tf"), since = Number(url.searchParams.get("since") || 0);
+      if (!TFS.includes(tf)) return send(res, 400, '{"error":"tf"}');
+      const b = await readBars(), list = b.tf[tf] || [];
+      let i = list.length; if (since) while (i > 0 && list[i - 1][0] >= since) i--; else i = 0;
+      return send(res, 200, JSON.stringify({ offset: b.offset, bars: list.slice(i) }));
+    }
+    if (url.pathname === "/api/stops") return send(res, 200, JSON.stringify(slHist));
     if (url.pathname === "/api/config") return send(res, 200, JSON.stringify(CONFIG));
     if (url.pathname === "/api/equity") return send(res, 200, JSON.stringify(equitySeries()));
     if (url.pathname === "/api/system") {
