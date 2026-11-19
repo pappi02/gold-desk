@@ -10,12 +10,15 @@
 //| Stop   : 0.75 x ATR14(H4, Wilder)                                 |
 //| Exit   : no TP. After +1R, trailing stop = best price - 3 x ATR.  |
 //|          Optional: stop to entry once +InpBreakevenR (0 = off).   |
+//|          Optional: once +InpSwingLockR, stop just beyond the      |
+//|          latest swing high/low that is in profit (else entry);    |
+//|          can keep following newer swings (InpSwingTrail).         |
 //|          Time stop 10 days.                                       |
 //| Attach to an XAUUSD (or XAUUSDc) M15 chart. Works on cent accts.  |
 //| Each closed trade is logged to MQL5/Files/<InpLogFile>.           |
 //+------------------------------------------------------------------+
 #property copyright "Gold Desk"
-#property version   "1.03"   // 1.03: optional breakeven stop (InpBreakevenR, off by default); 1.02: shared 4-trades/day cap across all Gold EAs; 1.01: lot size from OrderCalcProfit (tick value bug)
+#property version   "1.04"   // 1.04: optional swing-structure profit lock (InpSwingLockR, off by default); 1.03: optional breakeven stop (InpBreakevenR, off by default); 1.02: shared 4-trades/day cap across all Gold EAs; 1.01: lot size from OrderCalcProfit (tick value bug)
 #include <Trade/Trade.mqh>
 
 input double InpRiskPct        = 2.0;    // Risk per trade (% of balance)
@@ -23,6 +26,12 @@ input double InpStopATR        = 0.75;   // Initial stop (x H4 ATR14)
 input double InpTrailATR       = 3.0;    // Trailing distance (x H4 ATR14)
 input double InpTrailStartR    = 1.0;    // Start trailing after +R
 input double InpBreakevenR     = 0.0;    // Move stop to entry after +R (0 = off)
+input double InpSwingLockR     = 0.0;    // Lock profit at the latest swing after +R (0 = off)
+input ENUM_TIMEFRAMES InpSwingTF = PERIOD_H1; // Swing timeframe
+input int    InpSwingBars      = 2;      // Swing = bar beyond N bars each side
+input double InpSwingBufATR    = 0.1;    // Stop buffer beyond the swing (x H4 ATR)
+input bool   InpSwingTrail     = true;   // Keep moving the stop to newer swings
+input int    InpSwingLookback  = 100;    // Bars searched for the latest swing
 input int    InpMaxDays        = 10;     // Time stop (days)
 input int    InpMaxTradesPerDay= 3;      // Max NEW trades per broker day
 input int    InpMaxOpen        = 0;      // Max open positions (0 = no cap)
@@ -203,6 +212,42 @@ double CachedBest(const ulong tk, const int dir, const datetime openT, const dou
    return cBest[k];
 }
 
+// Stop just beyond the most recent confirmed swing on InpSwingTF that locks profit
+// (sell: swing high below entry; buy: swing low above entry) and is a valid stop now.
+// Returns 0 if the latest usable swing does not lock profit.
+double SwingStop(const int dir, const double op, const double atr)
+{
+   double sp  = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double gap = MathMax((double)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), 10.0) * SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double px  = dir == 1 ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double buf = InpSwingBufATR * atr;
+   int n = MathMax(InpSwingBars, 1);
+   for(int b = n + 1; b <= n + InpSwingLookback; b++)
+   {
+      if(dir == -1)
+      {
+         double h = iHigh(_Symbol, InpSwingTF, b); if(h <= 0) break;
+         bool sw = true;
+         for(int j = 1; j <= n && sw; j++) if(iHigh(_Symbol, InpSwingTF, b - j) >= h || iHigh(_Symbol, InpSwingTF, b + j) > h) sw = false;
+         if(!sw) continue;
+         double c = h + sp + buf;
+         if(c <= px + gap) continue;                      // too close to price: use the next older swing
+         return c < op ? NormalizeDouble(c, _Digits) : 0;
+      }
+      else
+      {
+         double l = iLow(_Symbol, InpSwingTF, b); if(l <= 0) break;
+         bool sw = true;
+         for(int j = 1; j <= n && sw; j++) if(iLow(_Symbol, InpSwingTF, b - j) <= l || iLow(_Symbol, InpSwingTF, b + j) < l) sw = false;
+         if(!sw) continue;
+         double c = l - buf;
+         if(c >= px - gap) continue;
+         return c > op ? NormalizeDouble(c, _Digits) : 0;
+      }
+   }
+   return 0;
+}
+
 void ManagePositions()
 {
    datetime m1 = iTime(_Symbol, PERIOD_M1, 0); bool refresh = (m1 != lastM1); lastM1 = m1;
@@ -226,6 +271,16 @@ void ManagePositions()
       {
          double be = NormalizeDouble(op, _Digits);            // the tighter of breakeven and the trail
          ns = ns == 0 ? be : dir == 1 ? MathMax(ns, be) : MathMin(ns, be);
+      }
+      if(InpSwingLockR > 0 && refresh && (best - op) * dir >= InpSwingLockR * r)   // once a minute is enough
+      {
+         bool locked = sl != 0 && (sl - op) * dir > 0;       // stop already in profit
+         if(InpSwingTrail || !locked)
+         {
+            double sw = SwingStop(dir, op, atr);
+            if(sw == 0 && !locked) sw = NormalizeDouble(op, _Digits);   // no swing in profit yet: at least breakeven
+            if(sw != 0) ns = ns == 0 ? sw : dir == 1 ? MathMax(ns, sw) : MathMin(ns, sw);
+         }
       }
       if(ns == 0) continue;
       if((dir == 1 && ns > sl + 10*pt) || (dir == -1 && (sl == 0 || ns < sl - 10*pt)))
