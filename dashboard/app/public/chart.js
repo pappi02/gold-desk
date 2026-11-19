@@ -90,6 +90,36 @@ window.GDChart = (() => {
     }
   }
 
+  // ---------------------------------------------------------------- last price tag + candle countdown (price axis)
+  class PriceTag {
+    constructor() { this.view = { zOrder: () => "top", renderer: () => ({ draw: (t) => this.draw(t) }) }; }
+    attached({ requestUpdate }) { this.req = requestUpdate; }
+    detached() { this.req = null; }
+    updateAllViews() {}
+    priceAxisPaneViews() { return [this.view]; }
+    tick() { if (this.req) this.req(); }
+    draw(target) {
+      if (!S || !S.lastBar) return;
+      const L = S.lastBar, y = S.series.priceToCoordinate(L.close); if (y == null) return;
+      const th = THEME[S.theme], step = TF[S.tf].s, left = L.time + step - (Date.now() / 1000 + EAT);
+      const pad = (n) => String(n).padStart(2, "0"), sec = Math.ceil(left);
+      const cd = left <= 0 || left > step ? null
+        : sec >= 86400 ? `${Math.floor(sec / 86400)}d ${pad(Math.floor(sec % 86400 / 3600))}h`
+        : sec >= 3600 ? `${pad(Math.floor(sec / 3600))}:${pad(Math.floor(sec % 3600 / 60))}:${pad(sec % 60)}`
+        : `${pad(Math.floor(sec / 60))}:${pad(sec % 60)}`;
+      target.useBitmapCoordinateSpace(({ context: c, horizontalPixelRatio: hr, verticalPixelRatio: vr, bitmapSize }) => {
+        const lh = 14 * vr, h = (cd ? 2 : 1) * lh + 2 * vr, top = Math.round(y * vr - lh / 2 - vr);
+        c.fillStyle = L.close >= L.open ? th.up : th.down;
+        c.fillRect(0, top, bitmapSize.width, h);
+        c.fillStyle = "#ffffff"; c.textAlign = "left"; c.textBaseline = "middle";
+        c.font = `${Math.round(11 * vr)}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+        const x = 8 * hr;
+        c.fillText(fmt(L.close), x, top + vr + lh / 2);
+        if (cd) c.fillText(cd, x, top + vr + lh * 1.5);
+      });
+    }
+  }
+
   // ---------------------------------------------------------------- data
   const toChart = (serverT, off) => serverT - off * 3600 + EAT;
   async function getBars(tf, since) {
@@ -272,10 +302,12 @@ window.GDChart = (() => {
       crosshair: { mode: 0 },
       localization: { priceFormatter: (p) => fmt(p) },
     });
-    const series = chart.addCandlestickSeries({ priceLineVisible: true, lastValueVisible: true, priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
+    const series = chart.addCandlestickSeries({ priceLineVisible: true, lastValueVisible: false, priceFormat: { type: "price", precision: 2, minMove: 0.01 } });
     const overlay = new Overlay();
     series.attachPrimitive(overlay);
-    S = { root, chart, series, overlay, model, focus, theme: store.get("theme", "light"), legend: root.querySelector(".tv-legend"),
+    const tag = new PriceTag();
+    series.attachPrimitive(tag);
+    S = { root, chart, series, overlay, tag, model, focus, theme: store.get("theme", "light"), legend: root.querySelector(".tv-legend"),
       show: { levels: store.get("levels", "1") === "1", trades: store.get("trades", "1") === "1" }, priceLines: [], stops: {}, bars: null, times: [], m15: [], d1: [],
       logicalOf: (t) => logicalOf(t), timer: null, hover: false, off: 2 };
     applyTheme();
@@ -291,13 +323,14 @@ window.GDChart = (() => {
     const tf = focus ? "M15" : store.get("tf", "M15");
     loadTf(TF[tf] ? tf : "M15").catch(fail);
     S.timer = setInterval(refresh, 30000);
+    S.clock = setInterval(() => S && S.tag.tick(), 1000);
   }
 
   function update(model) { if (!S) return; S.model = model; liveTick(model); if (S.bars) S.overlay.set({ segs: S.overlay.items.segs, trades: computeTrades() }); }
 
   function destroy() {
     if (!S) return;
-    clearInterval(S.timer);
+    clearInterval(S.timer); clearInterval(S.clock);
     try { S.chart.remove(); } catch { /* already gone */ }
     S = null;
   }
