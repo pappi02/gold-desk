@@ -18,7 +18,7 @@
 //| Each closed trade is logged to MQL5/Files/<InpLogFile>.           |
 //+------------------------------------------------------------------+
 #property copyright "Gold Desk"
-#property version   "1.04"   // 1.04: optional swing-structure profit lock (InpSwingLockR, off by default); 1.03: optional breakeven stop (InpBreakevenR, off by default); 1.02: shared 4-trades/day cap across all Gold EAs; 1.01: lot size from OrderCalcProfit (tick value bug)
+#property version   "1.05"   // 1.05: swing lock ON by default (H1, once, at +2R) - best of the Nov 2026 exit backtests; 1.04: swing-structure profit lock; 1.03: optional breakeven stop (InpBreakevenR, off by default); 1.02: shared 4-trades/day cap across all Gold EAs; 1.01: lot size from OrderCalcProfit (tick value bug)
 #include <Trade/Trade.mqh>
 
 input double InpRiskPct        = 2.0;    // Risk per trade (% of balance)
@@ -26,11 +26,11 @@ input double InpStopATR        = 0.75;   // Initial stop (x H4 ATR14)
 input double InpTrailATR       = 3.0;    // Trailing distance (x H4 ATR14)
 input double InpTrailStartR    = 1.0;    // Start trailing after +R
 input double InpBreakevenR     = 0.0;    // Move stop to entry after +R (0 = off)
-input double InpSwingLockR     = 0.0;    // Lock profit at the latest swing after +R (0 = off)
+input double InpSwingLockR     = 2.0;    // Lock profit at the latest swing after +R (0 = off)
 input ENUM_TIMEFRAMES InpSwingTF = PERIOD_H1; // Swing timeframe
 input int    InpSwingBars      = 2;      // Swing = bar beyond N bars each side
 input double InpSwingBufATR    = 0.1;    // Stop buffer beyond the swing (x H4 ATR)
-input bool   InpSwingTrail     = true;   // Keep moving the stop to newer swings
+input bool   InpSwingTrail     = false;  // Keep moving the stop to newer swings (false = move once)
 input int    InpSwingLookback  = 100;    // Bars searched for the latest swing
 input int    InpMaxDays        = 10;     // Time stop (days)
 input int    InpMaxTradesPerDay= 3;      // Max NEW trades per broker day
@@ -104,6 +104,9 @@ int OnInit()
    { Print("Indicator handle error"); return INIT_FAILED; }
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(50);
+   PrintFormat("Strategy C v%s exits: stop %.2fxATR, trail %.1fxATR after +%.1fR, breakeven %s, swing lock %s",
+               "1.05", InpStopATR, InpTrailATR, InpTrailStartR, InpBreakevenR > 0 ? StringFormat("at +%.1fR", InpBreakevenR) : "off",
+               InpSwingLockR > 0 ? StringFormat("at +%.1fR on %s, %s", InpSwingLockR, EnumToString(InpSwingTF), InpSwingTrail ? "following" : "once") : "off");
    return INIT_SUCCEEDED;
 }
 

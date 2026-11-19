@@ -1,2 +1,5 @@
 InpRiskPct=2.0
 InpSkipIfMinLotTooBig=false
+InpSwingLockR=2.0
+InpSwingTF=16385
+InpSwingTrail=false

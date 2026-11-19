@@ -34,14 +34,14 @@
       "magic": 260119,
       "name": "Strategy C",
       "title": "Breakout · ATR Trail",
-      "version": "1.02",
+      "version": "1.05",
       "timeframe": "M15",
       "style": "Trend-following breakout",
       "color": "#f5a524",
       "risk_pct": 2,
-      "summary": "Same Daily + H4 bias. Enters on a fresh M15 close through the previous-day high/low or the Asian range (03:00–10:00 EAT) in the London/NY windows. Stop 0.75 × H4 ATR; after +1R a 3 × ATR trailing stop; 10-day time stop. Max 3 a day; positions can overlap.",
+      "summary": "Same Daily + H4 bias. Enters on a fresh M15 close through the previous-day high/low or the Asian range (03:00–10:00 EAT) in the London/NY windows. Stop 0.75 × H4 ATR; after +1R a 3 × ATR trailing stop; at +2R the stop locks profit just beyond the latest H1 swing (once; else breakeven); 10-day time stop. Max 3 a day; positions can overlap.",
       "triggers": { "PD": "Prev-day break", "AS": "Asian break" },
-      "backtest": { "period": "Jan 2020 – Nov 2026", "trades": 1441, "trades_per_year": 210, "win_pct": 26.4, "avg_r": 0.485, "pf": 1.68, "max_dd_r": 82.8, "losing_run": 41, "avg_win_r": 4.55, "avg_loss_r": -0.98, "pass_avg_r": 0.15 }
+      "backtest": { "period": "Jan 2020 – Nov 2026", "trades": 1438, "trades_per_year": 210, "win_pct": 33.2, "avg_r": 0.512, "pf": 1.84, "max_dd_r": 58.3, "losing_run": 27, "avg_win_r": 3.38, "avg_loss_r": -0.98, "pass_avg_r": 0.15 }
     }
   ]
 }
